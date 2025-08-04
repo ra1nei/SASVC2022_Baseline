@@ -1,60 +1,44 @@
 import os
-from pathlib import Path
 import random
 
-DATA_ROOT = "/kaggle/input/vsasv-train/vlsp_train/home4/vuhl/VSASV-Dataset/vlsp2025/train"
-SAVE_DIR = "/kaggle/working/protocols"
+TRAIN_META = "/kaggle/input/vsasv-train/train_vlsp_2025_metadata.txt"
+EVAL_META  = "/kaggle/input/public-test-vsasv/public_test_vlsp.txt"
+SAVE_DIR   = "/kaggle/working/protocols"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-utt_list = []
+# --- Đọc toàn bộ train metadata ---
+with open(TRAIN_META, "r") as f:
+    lines = f.readlines()
 
-for speaker in os.listdir(DATA_ROOT):
-    for cm_label in ["bonafide", "spoof"]:
-        folder = Path(DATA_ROOT) / speaker / cm_label
-        if not folder.exists():
-            continue
-        for fname in os.listdir(folder):
-            if fname.endswith(".wav"):
-                utt_id = f"{speaker}_{fname}"
-                utt_list.append({
-                    "spk": speaker,
-                    "utt": utt_id,
-                    "wav_path": str(folder / fname),
-                    "cm_label": cm_label,
-                    "attack_id": "-" if cm_label == "bonafide" else "A00",  # gán tạm
-                })
+# Gom theo speaker
+spk_to_lines = {}
+for line in lines:
+    spk = line.strip().split()[0]
+    spk_to_lines.setdefault(spk, []).append(line)
 
-# Shuffle và chia train/dev/eval theo tỉ lệ
+# Shuffle speaker list
+speakers = list(spk_to_lines.keys())
 random.seed(42)
-random.shuffle(utt_list)
+random.shuffle(speakers)
 
-N = len(utt_list)
-train_utt = utt_list[:int(0.6 * N)]
-dev_utt = utt_list[int(0.6 * N):int(0.8 * N)]
-eval_utt = utt_list[int(0.8 * N):]
+# Chia 80% train, 20% dev
+split = int(0.8 * len(speakers))
+train_spk = speakers[:split]
+dev_spk   = speakers[split:]
 
-splits = {"train": train_utt, "dev": dev_utt, "eval": eval_utt}
+# Lấy dòng theo speaker
+train_lines = [l for spk in train_spk for l in spk_to_lines[spk]]
+dev_lines   = [l for spk in dev_spk for l in spk_to_lines[spk]]
 
+# --- Ghi train/dev list ---
+with open(f"{SAVE_DIR}/cm_trn_list.txt", "w") as f:
+    f.writelines(train_lines)
 
-def write_cm_protocol(split, utts):
-    fname = f"{SAVE_DIR}/vsasv.cm.{split}.trl.txt" if split != "train" else f"{SAVE_DIR}/vsasv.cm.train.trn.txt"
-    with open(fname, "w") as f:
-        for u in utts:
-            f.write(f"{u['spk']} {u['utt']} {u['attack_id']} {u['cm_label']}\n")
+with open(f"{SAVE_DIR}/cm_dev_list.txt", "w") as f:
+    f.writelines(dev_lines)
 
+# --- Eval giữ nguyên từ file riêng ---
+os.system(f"cp {EVAL_META} {SAVE_DIR}/cm_eval_list.txt")
 
-def write_asv_sasv_protocol(split, utts):
-    fname = f"{SAVE_DIR}/vsasv.asv.{split}.gi.trl.txt"
-    sasv_fname = f"{SAVE_DIR}/vsasv.sasv.{split}.trl.txt"
-    with open(fname, "w") as fasv, open(sasv_fname, "w") as fsasv:
-        for u in utts:
-            asv_label = "target" if u["cm_label"] == "bonafide" else "spoof"
-            fasv.write(f"{u['spk']} {u['utt']} {u['cm_label']} {asv_label}\n")
-            fsasv.write(f"{u['spk']} {u['utt']} {u['cm_label']} {asv_label}\n")
-
-
-for split, items in splits.items():
-    write_cm_protocol(split, items)
-    write_asv_sasv_protocol(split, items)
-
-print("finish", SAVE_DIR)
+print(f"✅ Train speakers: {len(train_spk)}, Dev speakers: {len(dev_spk)}")
+print(f"Files saved in {SAVE_DIR}")

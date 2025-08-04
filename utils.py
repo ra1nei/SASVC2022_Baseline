@@ -117,34 +117,20 @@ def find_gpus(nums=4, min_req_mem=None) -> str:
 
 
 def get_spkdic(cm_meta: str) -> Dict:
-    l_cm_meta = open(cm_meta, "r").readlines()
-
     d_spk = {}
-    # dictionary of speakers
-    # d_spk : {
-    #   'spk_id1':{
-    #       'bonafide': [utt1, utt2],
-    #       'spoof': [utt5]
-    #   },
-    #   'spk_id2':{
-    #       'bonafide': [utt3, utt4, utt8],
-    #       'spoof': [utt6, utt7]
-    #   } ...
-    # }
+    with open(cm_meta, "r") as f:
+        for line in f:
+            spk, filename, ans = line.strip().split()
 
-    for line in l_cm_meta:
-        spk, filename, _, _, ans = line.strip().split(" ")
-        if spk not in d_spk:
-            d_spk[spk] = {}
-            d_spk[spk]["bonafide"] = []
-            d_spk[spk]["spoof"] = []
-
-        if ans == "bonafide":
-            d_spk[spk]["bonafide"].append(filename)
-        elif ans == "spoof":
-            d_spk[spk]["spoof"].append(filename)
-
+            if spk not in d_spk:
+                d_spk[spk] = {"bonafide": [], "spoof": []}
+            
+            if ans in ["bonafide", "spoof"]:
+                d_spk[spk][ans].append(filename)
+            else:
+                raise ValueError(f"⚠️ Unknown label {ans} in line: {line}")
     return d_spk
+
 
 
 def generate_spk_meta(config) -> None:
