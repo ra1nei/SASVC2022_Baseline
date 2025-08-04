@@ -31,7 +31,9 @@ def save_embeddings_from_vsasv(protocol_path, data_root, cm_embd_ext, asv_embd_e
                 raise ValueError(f"Invalid line format: {line}")
 
             # audio_path = os.path.join(data_root, spk_id, cm_label, utt_name)
-            audio_path = os.path.join(data_root, utt_name)
+            # audio_path = os.path.join(data_root, utt_name)
+            audio_path = os.path.join(data_root, os.path.relpath(utt_name, 'vlsp2025/train'))
+            print(audio_path)
             utt_id = f"{spk_id}_{utt_name}"
             utt2path[utt_id] = audio_path
 
