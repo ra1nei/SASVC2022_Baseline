@@ -14,14 +14,11 @@ from aasist.models.AASIST import Model as AASISTModel
 from ECAPATDNN.model import ECAPA_TDNN
 from utils import load_parameters
 
-
 def save_embeddings_from_vsasv(protocol_path, data_root, cm_embd_ext, asv_embd_ext, device):
     utt2path = {}
 
     with open(protocol_path, "r") as f:
         for line in f:
-            
-            ### DEBUGGING
             parts = line.strip().split()
             if len(parts) == 4:
                 spk_id, utt_name, _, cm_label = parts
@@ -30,21 +27,27 @@ def save_embeddings_from_vsasv(protocol_path, data_root, cm_embd_ext, asv_embd_e
             else:
                 raise ValueError(f"Invalid line format: {line}")
 
-            # audio_path = os.path.join(data_root, spk_id, cm_label, utt_name)
-            # audio_path = os.path.join(data_root, utt_name)
             audio_path = os.path.join(data_root, os.path.relpath(utt_name, 'vlsp2025/train'))
-            # print(audio_path)
             utt_id = f"{spk_id}_{utt_name}"
             utt2path[utt_id] = audio_path
 
     class VSASVDataset(torch.utils.data.Dataset):
-        def __init__(self, utt2path):
+        def __init__(self, utt2path, fixed_length=64000):
             self.keys = list(utt2path.keys())
             self.paths = [utt2path[k] for k in self.keys]
+            self.fixed_length = fixed_length
 
         def __getitem__(self, idx):
             wav, _ = torchaudio.load(self.paths[idx])
-            return wav.squeeze(0), self.keys[idx]  # mono
+            wav = wav.squeeze(0)  # (1, T) -> (T,)
+
+            if len(wav) < self.fixed_length:
+                pad_len = self.fixed_length - len(wav)
+                wav = torch.nn.functional.pad(wav, (0, pad_len))
+            else:
+                wav = wav[:self.fixed_length]
+
+            return wav, self.keys[idx]
 
         def __len__(self):
             return len(self.keys)
@@ -70,7 +73,6 @@ def save_embeddings_from_vsasv(protocol_path, data_root, cm_embd_ext, asv_embd_e
         pk.dump(cm_emb_dic, f)
     with open("embeddings/asv_embd_vsasv.pk", "wb") as f:
         pk.dump(asv_emb_dic, f)
-
 
 def get_args():
     parser = argparse.ArgumentParser()
