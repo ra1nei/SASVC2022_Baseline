@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 import random
 
-DATA_ROOT = "VSASV-Dataset/vlsp2025/train"
-SAVE_DIR = "protocols_vsasv"
+DATA_ROOT = "/kaggle/input/vsasv-train/vlsp_train/home4/vuhl/VSASV-Dataset/vlsp2025/train"
+SAVE_DIR = "/kaggle/working/protocols"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 utt_list = []
