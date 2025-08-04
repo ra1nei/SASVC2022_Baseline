@@ -20,7 +20,16 @@ def save_embeddings_from_vsasv(protocol_path, data_root, cm_embd_ext, asv_embd_e
 
     with open(protocol_path, "r") as f:
         for line in f:
-            spk_id, utt_name, _, cm_label = line.strip().split()
+            
+            ### DEBUGGING
+            parts = line.strip().split()
+            if len(parts) == 4:
+                spk_id, utt_name, _, cm_label = parts
+            elif len(parts) == 3:
+                spk_id, utt_name, cm_label = parts
+            else:
+                raise ValueError(f"Invalid line format: {line}")
+
             audio_path = os.path.join(data_root, spk_id, cm_label, utt_name)
             utt_id = f"{spk_id}_{utt_name}"
             utt2path[utt_id] = audio_path
