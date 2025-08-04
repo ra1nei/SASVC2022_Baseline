@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torchaudio
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -91,6 +92,61 @@ def save_embeddings(
     with open("embeddings/asv_embd_%s.pk" % (set_name), "wb") as f:
         pk.dump(asv_emb_dic, f)
 
+def save_embeddings_from_vsasv(protocol_path, data_root, cm_embd_ext, asv_embd_ext, device):
+    utt2spk = {}
+    utt2path = {}
+
+    with open(protocol_path, "r") as f:
+        for line in f:
+            spk_id, utt_name, _, cm_label = line.strip().split()
+
+            # Xây dựng đường dẫn đầy đủ đến file .wav
+            audio_path = os.path.join(data_root, spk_id, cm_label, utt_name)
+            utt_id = f"{spk_id}_{utt_name}"
+
+            if utt_id in utt2spk:
+                print("Duplicated utt_id", utt_id)
+
+            utt2spk[utt_id] = spk_id
+            utt2path[utt_id] = audio_path
+
+    # Dataset custom đơn giản
+    class VSASVDataset(torch.utils.data.Dataset):
+        def __init__(self, utt2path):
+            self.keys = list(utt2path.keys())
+            self.paths = [utt2path[k] for k in self.keys]
+
+        def __getitem__(self, idx):
+            path = self.paths[idx]
+            wav, _ = torchaudio.load(path)
+            return wav.squeeze(0), self.keys[idx]  # mono
+
+        def __len__(self):
+            return len(self.keys)
+
+    dataset = VSASVDataset(utt2path)
+    loader = DataLoader(dataset, batch_size=30, shuffle=False, drop_last=False)
+
+    cm_emb_dic = {}
+    asv_emb_dic = {}
+
+    print(f"Extracting embeddings from {protocol_path}...")
+
+    for batch_x, keys in tqdm(loader):
+        batch_x = batch_x.to(device)
+        with torch.no_grad():
+            batch_cm_emb, _ = cm_embd_ext(batch_x)
+            batch_asv_emb = asv_embd_ext(batch_x, aug=False)
+
+        for k, cm_emb, asv_emb in zip(keys, batch_cm_emb.cpu(), batch_asv_emb.cpu()):
+            cm_emb_dic[k] = cm_emb.numpy()
+            asv_emb_dic[k] = asv_emb.numpy()
+
+    os.makedirs("embeddings", exist_ok=True)
+    with open("embeddings/cm_embd_vsasv.pk", "wb") as f:
+        pk.dump(cm_emb_dic, f)
+    with open("embeddings/asv_embd_vsasv.pk", "wb") as f:
+        pk.dump(asv_emb_dic, f)
 
 def save_models(set_name, asv_embd_ext, device):
     utt2spk = {}
@@ -156,38 +212,27 @@ def get_args():
 
     return parser.parse_args()
 
-
 def main():
     args = get_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print("Device: {}".format(device))
 
     with open(args.aasist_config, "r") as f_json:
         config = json.loads(f_json.read())
-
     model_config = config["model_config"]
+
     cm_embd_ext = AASISTModel(model_config).to(device)
     load_parameters(cm_embd_ext.state_dict(), args.aasist_weight)
-    cm_embd_ext.to(device)
     cm_embd_ext.eval()
 
-    asv_embd_ext = ECAPA_TDNN(C=1024)
+    asv_embd_ext = ECAPA_TDNN(C=1024).to(device)
     load_parameters(asv_embd_ext.state_dict(), args.ecapa_weight)
-    asv_embd_ext.to(device)
     asv_embd_ext.eval()
 
-    for set_name in SET_PARTITION:
-        save_embeddings(
-            set_name,
-            cm_embd_ext,
-            asv_embd_ext,
-            device,
-        )
-        if set_name == "trn":
-            continue
-        save_models(set_name, asv_embd_ext, device)
+    protocol_path = "vsasv_train.txt"
+    data_root = "VSASV-Dataset/vlsp2025/train"
 
+    save_embeddings_from_vsasv(protocol_path, data_root, cm_embd_ext, asv_embd_ext, device)
 
 if __name__ == "__main__":
     main()
