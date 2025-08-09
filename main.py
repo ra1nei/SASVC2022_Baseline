@@ -53,7 +53,7 @@ def main(config, output_dir="./exp_result"):
 
     # --- Trainer ---
     trainer = pl.Trainer(
-        accelerator="gpu",
+        accelerator="cuda" if torch.cuda.is_available() else "cpu",
         devices=config["ngpus"],
         callbacks=callbacks,
         logger=logger,
