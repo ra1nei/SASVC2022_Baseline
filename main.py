@@ -45,6 +45,11 @@ def main(config, output_dir="./exp_result"):
         ),
     ]
 
+    # # --- GPU ---
+    # gpus = find_gpus(config["ngpus"], min_req_mem=config.get("min_req_mem", None))
+    # if gpus == -1:
+    #     raise ValueError("Required GPUs are not available")
+    # os.environ["CUDA_VISIBLE_DEVICES"] = gpus
 
     # --- Trainer ---
     trainer = pl.Trainer(
