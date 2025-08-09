@@ -53,18 +53,22 @@ class SASV_DevEvalset(Dataset):
 
     def __getitem__(self, index):
         line = self.utt_list[index].strip()
-        spkmd, key, label = line.split()
+        parts = line.split()
 
-        # Map label sang key_type
-        if label == "1":
-            key_type = "target"
-        elif label == "0":
-            key_type = "nontarget"
-        elif label == "2":
-            key_type = "spoof"
+        if len(parts) == 4:
+            spkmd, key, _, label = parts
+        elif len(parts) == 3:
+            spkmd, key, label = parts
         else:
+            raise ValueError(f"Bad line format: {line}")
+
+        # chấp nhận cả số lẫn chữ
+        mapping = {"1": "target", "0": "nontarget", "2": "spoof",
+                   "target": "target", "nontarget": "nontarget", "spoof": "spoof"}
+        if label not in mapping:
             raise ValueError(f"Unknown label {label}")
 
+        key_type = mapping[label]
         return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], key_type
 
 
