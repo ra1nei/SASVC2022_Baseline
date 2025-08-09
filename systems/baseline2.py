@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from metrics import get_all_EERs
 from utils import keras_decay
 from SASVC2022_Baseline.datautils import *
-from dataloaders.backend_fusion import SASV_Trainset, SASV_DevEvalset, SASV_Evalset
+from dataloaders.backend_fusion import SASV_Trainset, SASV_DevEvalset
 
 
 
