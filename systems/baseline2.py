@@ -91,25 +91,47 @@ class System(pl.LightningModule):
         self._validation_outputs.clear()
 
 
-    def test_step(self, batch, batch_idx, dataloader_idx=-1):
-        res_dict = self.validation_step(batch, batch_idx, dataloader_idx=dataloader_idx)
-        return res_dict
+    def test_step(self, batch, batch_idx, dataloader_idx: int = 0):
+        embd_asv_enrol, embd_asv_test, embd_cm_test, key = batch
 
-    def test_epoch_end(self, outputs):
-        log_dict = {}
-        preds, keys = [], []
-        for output in outputs:
-            preds.append(output["pred"])
-            keys.extend(list(output["key"]))
+        logits = self.model(embd_asv_enrol, embd_asv_test, embd_cm_test)
+        probs  = torch.softmax(logits, dim=-1)  # [B, 2]
 
-        preds = torch.cat(preds, dim=0)[:, 1].detach().cpu().numpy()
-        sasv_eer, sv_eer, spf_eer = get_all_EERs(preds=preds, keys=keys)
+        # Khởi tạo buffer nếu chưa có
+        if not hasattr(self, "_test_probs"):
+            self._test_probs = []
+            self._test_keys  = []
 
-        log_dict["sasv_eer_eval"] = sasv_eer
-        log_dict["sv_eer_eval"] = sv_eer
-        log_dict["spf_eer_eval"] = spf_eer
+        # Lưu xác suất class=1 và key cho epoch này
+        self._test_probs.append(probs[:, 1].detach().cpu())
+        # key từ DataLoader sẽ là list[str] → extend
+        self._test_keys.extend(list(key))
 
-        self.log_dict(log_dict)
+        # (tuỳ) cũng return để debug/log step
+        return {"pred": probs, "key": key}
+
+    def on_test_epoch_end(self):
+        # Lấy buffer ra, nếu trống thì thoát
+        probs_list = getattr(self, "_test_probs", [])
+        keys_list  = getattr(self, "_test_keys", [])
+        if not probs_list:
+            return
+
+        preds = torch.cat(probs_list, dim=0).numpy()  # (N,)
+        sasv_eer, sv_eer, spf_eer = get_all_EERs(preds=preds, keys=keys_list)
+
+        self.log_dict(
+            {
+                "sasv_eer_eval": sasv_eer,
+                "sv_eer_eval": sv_eer,
+                "spf_eer_eval": spf_eer,
+            },
+            prog_bar=True
+        )
+
+        # Dọn buffer cho sạch
+        self._test_probs.clear()
+        self._test_keys.clear()
 
 
     def configure_optimizers(self):
