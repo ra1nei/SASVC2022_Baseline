@@ -100,28 +100,28 @@ class System(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        if self.config.optimizer.lower() == "adam":
+        if self.config["optimizer"].lower() == "adam":
             optimizer = torch.optim.Adam(
                 params=self.parameters(),
-                lr=self.config.optim.lr,
-                weight_decay=self.config.optim.wd,
+                lr=self.config["optim"]["lr"],
+                weight_decay=self.config["optim"]["wd"],
             )
-        elif self.config.optimizer.lower() == "sgd":
+        elif self.config["optimizer"].lower() == "sgd":
             optimizer = torch.optim.SGD(
                 params=self.parameters(),
-                lr=self.config.optim.lr,
-                momentum=self.config.optim.momentum,
-                weight_decay=self.config.optim.wd,
+                lr=self.config["optim"]["lr"],
+                momentum=self.config["optim"]["momentum"],
+                weight_decay=self.config["optim"]["wd"],
             )
         else:
             raise NotImplementedError("....")
 
-        if self.config.optim.scheduler.lower() == "sgdr_cos_anl":
+        if self.config["optim"]["scheduler"].lower() == "sgdr_cos_anl":
             assert (
-                self.config.optim.n_epoch_per_cycle is not None
-                and self.config.optim.min_lr is not None
-                and self.config.optim.warmup_steps is not None
-                and self.config.optim.lr_mult_after_cycle is not None
+                self.config["optim"]["n_epoch_per_cycle"] is not None
+                and self.config["optim"]["min_lr"] is not None
+                and self.config["optim"]["warmup_steps"] is not None
+                and self.config["optim"]["lr_mult_after_cycle"] is not None
             )
             lr_scheduler = lr_schedulers.CosineAnnealingWarmupRestarts(
                 optimizer,
@@ -273,7 +273,7 @@ class System(pl.LightningModule):
         )
 
     def test_dataloader(self):
-        with open(self.config.dirs.sasv_eval_trial, "r") as f:
+        with open(self.config["dirs"]["sasv_eval_trial"], "r") as f:
             sasv_eval_trial = f.readlines()
         self.eval_ds = self.ds_func_eval(
             sasv_eval_trial, self.cm_embd_eval, self.asv_embd_eval, self.spk_model_eval)
@@ -286,9 +286,9 @@ class System(pl.LightningModule):
         )
 
     def configure_loss(self):
-        if self.config.loss.lower() == "bce":
+        if self.config["loss"].lower() == "bce":
             self.loss = F.binary_cross_entropy_with_logits
-        if self.config.loss.lower() == "cce":
+        if self.config["loss"].lower() == "cce":
             self.loss = torch.nn.CrossEntropyLoss(
                 weight=torch.FloatTensor(self.config.loss_weight)
             )
