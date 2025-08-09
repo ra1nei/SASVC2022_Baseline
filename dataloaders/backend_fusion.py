@@ -24,7 +24,7 @@ class SASV_Trainset(Dataset):
             nontarget_type = random.randint(1, 2)
 
             if nontarget_type == 1:  # zero-effort nontarget
-                spk, ze_spk = random.sample(self.spk_meta.keys(), 2)
+                spk, ze_spk = random.sample(list(self.spk_meta.keys()), 2)
                 enr = random.choice(self.spk_meta[spk]["bonafide"])
                 tst = random.choice(self.spk_meta[ze_spk]["bonafide"])
 
