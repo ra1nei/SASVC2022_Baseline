@@ -87,13 +87,13 @@ def main(args):
     )
 
     trainer.fit(system)
-    trainer.test(system, ckpt_path="best")
+    #trainer.test(system, ckpt_path="best")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SASVC Baseline (refactored).")
-    parser.add_argument("--config", type=str, required=True,
-                        help="path to .conf (OmegaConf) file")
+    # parser.add_argument("--config", type=str, required=True,
+    #                     help="path to .conf (OmegaConf) file")
     parser.add_argument("--output_dir", type=str, default="./exp_result",
                         help="output directory")
     main(parser.parse_args())
