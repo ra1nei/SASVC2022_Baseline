@@ -60,9 +60,18 @@ class System(pl.LightningModule):
         pred = self.model(embd_asv_enrol, embd_asv_test, embd_cm_test)
         pred = torch.softmax(pred, dim=-1)
 
+        if not hasattr(self, "_validation_outputs"):
+            self._validation_outputs = []
+        self._validation_outputs.append({"pred": pred, "key": key})
+
         return {"pred": pred, "key": key}
 
-    def validation_epoch_end(self, outputs):
+
+    def on_validation_epoch_end(self):
+        outputs = getattr(self, "_validation_outputs", [])
+        if not outputs:  # Nếu không có dữ liệu
+            return
+
         log_dict = {}
         preds, keys = [], []
         for output in outputs:
@@ -77,6 +86,10 @@ class System(pl.LightningModule):
         log_dict["spf_eer_dev"] = spf_eer
 
         self.log_dict(log_dict)
+
+        # Reset list để không bị cộng dồn sang epoch sau
+        self._validation_outputs.clear()
+
 
     def test_step(self, batch, batch_idx, dataloader_idx=-1):
         res_dict = self.validation_step(batch, batch_idx, dataloader_idx=dataloader_idx)
