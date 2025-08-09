@@ -92,46 +92,57 @@ class System(pl.LightningModule):
 
 
     def test_step(self, batch, batch_idx, dataloader_idx: int = 0):
-        embd_asv_enrol, embd_asv_test, embd_cm_test, key = batch
+        embd_asv_enrol, embd_asv_test, embd_cm_test, key, a, b = batch  # key = label (target/nontarget/spoof)
 
         logits = self.model(embd_asv_enrol, embd_asv_test, embd_cm_test)
-        probs  = torch.softmax(logits, dim=-1)  # [B, 2]
+        probs  = torch.softmax(logits, dim=-1)[:, 1]  # xác suất class=1 (SASV score)
 
-        # Khởi tạo buffer nếu chưa có
+        # buffers
         if not hasattr(self, "_test_probs"):
             self._test_probs = []
-            self._test_keys  = []
+            self._test_keys  = []   # labels để tính EER
+        if not hasattr(self, "_test_rows"):
+            self._test_rows = []    # (path1, path2, score) để ghi file
 
-        # Lưu xác suất class=1 và key cho epoch này
-        self._test_probs.append(probs[:, 1].detach().cpu())
-        # key từ DataLoader sẽ là list[str] → extend
+        # gom cho EER
+        self._test_probs.append(probs.detach().cpu())
+
+        # 'key' là list[str] sau collate -> extend
         self._test_keys.extend(list(key))
 
-        # (tuỳ) cũng return để debug/log step
-        return {"pred": probs, "key": key}
+        # 'a' và 'b' là list[str] paths -> lưu kèm score để xuất file
+        for ep, tp, sc in zip(a, b, probs.detach().cpu().numpy()):
+            self._test_rows.append((ep, tp, float(sc)))
+
+        return {"pred": logits, "key": key}  # tuỳ bạn, chỉ để debug/log
 
     def on_test_epoch_end(self):
-        # Lấy buffer ra, nếu trống thì thoát
+        # 1) Tính EER nếu có label
         probs_list = getattr(self, "_test_probs", [])
-        keys_list  = getattr(self, "_test_keys", [])
-        if not probs_list:
-            return
-
-        preds = torch.cat(probs_list, dim=0).numpy()  # (N,)
-        sasv_eer, sv_eer, spf_eer = get_all_EERs(preds=preds, keys=keys_list)
-
-        self.log_dict(
-            {
+        keys_list  = getattr(self, "_test_keys",  [])
+        if probs_list:
+            preds = torch.cat(probs_list, dim=0).numpy()  # (N,)
+            sasv_eer, sv_eer, spf_eer = get_all_EERs(preds=preds, keys=keys_list)
+            self.log_dict({
                 "sasv_eer_eval": sasv_eer,
                 "sv_eer_eval": sv_eer,
                 "spf_eer_eval": spf_eer,
-            },
-            prog_bar=True
-        )
+            }, prog_bar=True)
 
-        # Dọn buffer cho sạch
-        self._test_probs.clear()
-        self._test_keys.clear()
+        # 2) Ghi file "path1\tpath2\tscore"
+        rows = getattr(self, "_test_rows", [])
+        if rows:
+            out_dir = self.config.get("output_dir", ".")
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, "test_scores.tsv")
+            with open(out_path, "w") as f:
+                for ep, tp, sc in rows:
+                    f.write(f"{ep}\t{tp}\t{sc:.6f}\n")
+
+        # dọn buffer
+        if probs_list: self._test_probs.clear()
+        if keys_list:  self._test_keys.clear()
+        if rows:       self._test_rows.clear()
 
 
     def configure_optimizers(self):
@@ -331,10 +342,11 @@ class System(pl.LightningModule):
 
     def test_dataloader(self):
         self.eval_ds = SASV_Evalset(
-            self.utt_list_eval,       # list trial test
-            self.spk_model_eval,      # speaker model cho enrolment
-            self.asv_embd_eval,       # embed ASV test
-            self.cm_embd_eval         # embed CM test
+            self.utt_list_eval,
+            self.spk_model_eval,
+            self.asv_embd_eval,
+            self.cm_embd_eval,
+            return_pair_paths=True,   # <-- quan trọng
         )
         return DataLoader(
             self.eval_ds,

@@ -94,7 +94,7 @@ class SASV_Evalset(Dataset):
                 f"have_asv={key in self.asv_embd} have_cm={key in self.cm_embd}"
             )
 
-        return spk, asv, cm, key_type
+        return spk, asv, cm, key_type, a, b
 
     
 class SASV_DevEvalset(Dataset):
