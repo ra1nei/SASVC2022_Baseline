@@ -12,7 +12,6 @@ class Model(torch.nn.Module):
         asv_enr = torch.squeeze(embd_asv_enr, 1) # shape: (bs, 192)
         asv_tst = torch.squeeze(embd_asv_tst, 1) # shape: (bs, 192)
         cm_tst = torch.squeeze(embd_cm, 1) # shape: (bs, 160)
-        print(asv_enr.shape, asv_tst.shape, cm_tst.shape)
         x = self.enh_DNN(torch.cat([asv_enr, asv_tst, cm_tst], dim = 1)) # shape: (bs, 32)
         x = self.fc_out(x)  # (bs, 2)
 

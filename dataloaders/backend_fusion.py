@@ -53,10 +53,20 @@ class SASV_DevEvalset(Dataset):
 
     def __getitem__(self, index):
         line = self.utt_list[index].strip()
-        # ví dụ định dạng: "spkmd key _ ans"
-        spkmd, key, *_rest = line.split()
-        # Trả về key = nguyên chuỗi line, để get_all_EERs tự parse ans bên trong
-        return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], line
+        spkmd, key, _, label = line.split()
+
+        # Map label sang key_type
+        if label == "1":
+            key_type = "target"
+        elif label == "0":
+            key_type = "nontarget"
+        elif label == "2":
+            key_type = "spoof"
+        else:
+            raise ValueError(f"Unknown label {label}")
+
+        return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], key_type
+
 
 
 
