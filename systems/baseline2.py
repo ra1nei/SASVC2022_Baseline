@@ -315,8 +315,8 @@ class System(pl.LightningModule):
         )
 
     def val_dataloader(self):
-        self.dev_ds = SASV_DevEvalset(
-            self.utt_list_val,        # biến có sẵn, không đọc file
+        self.dev_ds = SASV_Evalset(
+            self.utt_list_val,  
             self.spk_model_val,
             self.asv_embd_val,
             self.cm_embd_val
