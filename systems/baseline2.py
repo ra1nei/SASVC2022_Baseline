@@ -134,7 +134,7 @@ class System(pl.LightningModule):
         if rows:
             out_dir = self.config.get("output_dir", ".")
             os.makedirs(out_dir, exist_ok=True)
-            out_path = os.path.join(out_dir, "test_scores.tsv")
+            out_path = os.path.join(out_dir, "prediction.txt")
             with open(out_path, "w") as f:
                 for ep, tp, sc in rows:
                     f.write(f"{ep}\t{tp}\t{sc:.6f}\n")
