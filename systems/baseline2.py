@@ -266,27 +266,35 @@ class System(pl.LightningModule):
                 "utt_list_val / spk_model_val chưa có. Hãy build ở fit hoặc gán trước validate."
             self.ds_func_dev = SASV_DevEvalset
         elif stage == "test":
-        # Load embeddings test nếu chưa có
+            # 1) Lấy embedding test (ASV/CM) đã load sẵn
             if not (hasattr(self, "asv_embd_eval") and hasattr(self, "cm_embd_eval")):
-                self.asv_embd_eval = self.asv_embd_test  # từ load_embeddings()
+                self.asv_embd_eval = self.asv_embd_test
                 self.cm_embd_eval  = self.cm_embd_test
 
-            # Load trial list test
-            with open(self.config["dirs"]["public_test"], "r") as f:
-                self.utt_list_eval = [ln.strip() for ln in f if ln.strip()]
+            # 2) Đọc trials: "enroll_path test_path label" -> (e_uid, t_uid, label)
+            trial_file = self.config["dirs"]["public_test"]
+            triples = parse_trials_to_uids(trial_file)  # [(e_uid, t_uid, label), ...]
 
-            # Tạo speaker model từ enrolment trong trial list test
-            self.spk_model_eval = build_spk_model_from_trials(self.utt_list_eval,
-                                                            self.asv_embd_eval)
+            # 3) Build speaker model theo ENROLL UID (ASV only)
+            from collections import defaultdict
+            import numpy as np
+            bucket = defaultdict(list)
+            for e_uid, _, _ in triples:
+                if e_uid in self.asv_embd_eval:
+                    bucket[e_uid].append(self.asv_embd_eval[e_uid])
+            self.spk_model_eval = {k: (np.mean(v, axis=0) if len(v) > 1 else v[0]) for k, v in bucket.items()}
 
-            self.ds_func_eval = SASV_DevEvalset
+            # 4) Tạo utt_list_eval đúng format "spkmd key label" cho SASV_DevEvalset
+            #    (spkmd = e_uid, key = t_uid, label = target/nontarget/spoof)
+            self.utt_list_eval = [f"{e} {t} {lab}" for (e, t, lab) in triples]
+            self.ds_func_dev = SASV_DevEvalset
         # 5) Stage TEST: tương tự validate nhưng dùng biến eval
-        elif stage == "test":
-            # Bạn cần tự chuẩn bị self.utt_list_eval / self.spk_model_eval / *_eval embeddings
-            # (có thể build giống phần val hoặc đọc từ nơi bạn đã chuẩn hoá)
-            assert hasattr(self, "utt_list_eval") and hasattr(self, "spk_model_eval"), \
-                "utt_list_eval / spk_model_eval chưa có. Hãy build/gán trước test."
-            self.ds_func_eval = SASV_DevEvalset
+        # elif stage == "test":
+        #     # Bạn cần tự chuẩn bị self.utt_list_eval / self.spk_model_eval / *_eval embeddings
+        #     # (có thể build giống phần val hoặc đọc từ nơi bạn đã chuẩn hoá)
+        #     assert hasattr(self, "utt_list_eval") and hasattr(self, "spk_model_eval"), \
+        #         "utt_list_eval / spk_model_eval chưa có. Hãy build/gán trước test."
+        #     self.ds_func_eval = SASV_DevEvalset
 
         else:
             raise NotImplementedError(f"Unsupported stage: {stage}")
@@ -376,5 +384,5 @@ class System(pl.LightningModule):
         emb_dir_cm_test  = Path(self.config["dirs"]["cm_embedding_test"])
         self.asv_embd = load_embedding_dict(str(emb_dir_asv))
         self.cm_embd  = load_embedding_dict(str(emb_dir_cm))
-        self.asv_embd_test = load_embedding_dict(str(emb_dir_asv_test))
-        self.cm_embd_test = load_embedding_dict(str(emb_dir_cm_test))
+        self.asv_embd_test = load_embd_npy(str(emb_dir_asv_test))
+        self.cm_embd_test = load_embd_npy(str(emb_dir_cm_test))

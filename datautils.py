@@ -102,71 +102,35 @@ def load_embedding_dict(root_dir):
                     emb_dict[key] = np.load(os.path.join(sub_dir, fname))
     return emb_dict
 
-def load_protocol_lines(path):
-    with open(path, "r") as f:
-        lines = [ln.strip() for ln in f if ln.strip()]
-    return lines  # mỗi dòng dạng "spkmd key ... label"
-
-def build_spk_model_from_trials(utt_list, asv_embd, use_bonafide_only=True):
-    """
-    utt_list: list dòng trial. Hỗ trợ 3 kiểu:
-      1) "spkID key - 1|0|2"
-      2) "spkID key label"           (label: 1/0/2 hoặc target/nontarget/spoof)
-      3) "enrol_key test_key label"  (không có spkID, sẽ lấy spk từ enrol_key)
-    """
-    from collections import defaultdict
-    import numpy as np
-
-    # gom danh sách enrol theo speaker
-    spk2keys = defaultdict(list)
-
-    for line in utt_list:
-        parts = line.strip().split()
-        if not parts:
-            continue
-
-        if len(parts) == 4:
-            # spkID key _ label
-            spk, key, _, lab = parts
-        elif len(parts) == 3:
-            a, b, c = parts
-            # TH1: "spk key label"
-            if "/" in b and ("/bonafide/" in b or "/spoof/" in b):
-                spk, key, lab = a, b, c
-            else:
-                # TH2: "enrol_key test_key label"
-                enrol_key, test_key, lab = a, b, c
-                # lấy spk từ enrol_key (tiền tố trước dấu '/')
-                spk = enrol_key.split("/", 1)[0]
-                key = enrol_key
-        else:
-            # fallback tối giản: lấy speaker từ key ở cột 1
-            key = parts[0]
-            spk = key.split("/", 1)[0]
-            lab = parts[-1]
-
-        lab_map = {"1":"target","0":"nontarget","2":"spoof",
-                   "target":"target","nontarget":"nontarget","spoof":"spoof"}
-        lab = lab_map.get(lab, None)
-
-        # chỉ dùng bonafide nếu cần
-        if use_bonafide_only and "/bonafide/" not in key:
-            continue
-
-        if key in asv_embd:
-            spk2keys[spk].append(key)
-
-    # tính mean embedding per speaker
-    spk_model = {}
-    for spk, keys in spk2keys.items():
-        if not keys: 
-            continue
-        vecs = [asv_embd[k] for k in keys if k in asv_embd]
-        if not vecs:
-            continue
-        mean = np.mean(np.stack(vecs, axis=0), axis=0).astype(np.float32)
-        spk_model[spk] = mean
-
-    return spk_model
+import numpy as np
+# ví dụ: các .npy đặt tên 000000xxxx.npy
+def load_embd_npy(npy_dir):
+    embd = {}
+    for name in os.listdir(npy_dir):
+        if name.endswith(".npy"):
+            k = os.path.splitext(name)[0]
+            embd[k] = np.load(os.path.join(npy_dir, name))
+    return embd
 
 
+
+def build_spk_model_from_testfile(lines, asv_embd):
+    bucket = defaultdict(list)
+    for ln in lines:
+        e, t, lab = ln.strip().split()
+        e_uid = uid(e) if e.endswith(".wav") or "/" in e or "\\" in e else e
+        if e_uid in asv_embd:
+            bucket[e_uid].append(asv_embd[e_uid])
+    return {k: np.mean(v, axis=0) if len(v) > 1 else v[0] for k, v in bucket.items()}
+
+
+def uid(p):  # "public_test/0000005472.wav" -> "0000005472"
+    return os.path.splitext(os.path.basename(p))[0]
+
+def parse_trials_to_uids(trial_file):
+    triples = []
+    with open(trial_file) as f:
+        for ln in f:
+            e_path, t_path, lab = ln.strip().split()
+            triples.append((uid(e_path), uid(t_path), lab))  # (e_uid, t_uid, label)
+    return triples
