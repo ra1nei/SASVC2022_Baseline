@@ -47,17 +47,12 @@ import torch
 
 def uid(p): return os.path.splitext(os.path.basename(p))[0]
 
-def uid(p: str) -> str:
-    # path -> UID (basename không đuôi); nếu đã là UID thì giữ nguyên
-    return os.path.splitext(os.path.basename(p))[0] if ("/" in p or "\\" in p or p.endswith(".wav")) else p
-
 class SASV_Evalset(Dataset):
-    def __init__(self, utt_list, spk_model, asv_embd, cm_embd, return_key=True):
+    def __init__(self, utt_list, spk_model, asv_embd, cm_embd):
         self.utt_list = utt_list
         self.spk_model = spk_model
         self.asv_embd = asv_embd
         self.cm_embd = cm_embd
-        self.return_key = return_key  # để ghi submission nếu cần
 
     def __len__(self):
         return len(self.utt_list)
@@ -66,44 +61,40 @@ class SASV_Evalset(Dataset):
         line = self.utt_list[index].strip()
         parts = line.split()
 
+        # Hỗ trợ 3 dạng:
         # 4: spkmd key _ label
-        # 3: spkmd key label  (UID)
-        # 3: enroll_path test_path label  (path -> UID)
+        # 3: spkmd key label      (đã là UID)
+        # 3: enroll_path test_path label  (sẽ convert sang UID)
         if len(parts) == 4:
             spkmd, key, _, label = parts
         elif len(parts) == 3:
             a, b, label = parts
-            spkmd, key = uid(a), uid(b)
+            # nếu a/b có '/' hoặc '.wav' -> coi như path, convert sang UID
+            if ("/" in a or "\\" in a or a.endswith(".wav")) or ("/" in b or "\\" in b or b.endswith(".wav")):
+                spkmd, key = uid(a), uid(b)
+            else:
+                spkmd, key = a, b
         else:
             raise ValueError(f"Bad line format: {line}")
 
-        # Chuẩn hoá label (nhận non-target, non_target, số…)
-        lab = label.strip().lower().replace("-", "").replace("_", "")
-        mapping = {
-            "1": "target", "target": "target", "bonafide": "target", "genuine": "target",
-            "0": "nontarget", "nontarget": "nontarget", "nonmatch": "nontarget", "impostor": "nontarget",
-            "2": "spoof", "spoof": "spoof", "attack": "spoof"
-        }
-        if lab not in mapping:
-            raise ValueError(f"Unknown label {label} (normalized='{lab}')")
-        key_type = mapping[lab]
+        # map label (chuỗi) để dùng lại get_all_EERs sau này
+        mapping = {"1": "target", "0": "nontarget", "2": "spoof",
+                   "target": "target", "nontarget": "nontarget", "spoof": "spoof","non-target":"nontarget"}
+        if label not in mapping:
+            raise ValueError(f"Unknown label {label}")
+        key_type = mapping[label]
 
         try:
             spk = torch.as_tensor(self.spk_model[spkmd], dtype=torch.float32)
-            asv = torch.as_tensor(self.asv_embd[key],   dtype=torch.float32)
-            cm  = torch.as_tensor(self.cm_embd[key],    dtype=torch.float32)
+            asv = torch.as_tensor(self.asv_embd[key], dtype=torch.float32)
+            cm  = torch.as_tensor(self.cm_embd[key], dtype=torch.float32)
         except KeyError as e:
             raise KeyError(
                 f"Missing {e}. have_spk={spkmd in self.spk_model} "
-                f"have_asv={key in self.asv_embd} have_cm={key in self.cm_embd} "
-                f"(spkmd='{spkmd}', key='{key}')"
+                f"have_asv={key in self.asv_embd} have_cm={key in self.cm_embd}"
             )
 
-        if self.return_key:
-            # tiện cho test_epoch_end ghi submit theo key
-            return {"spk": spk, "asv": asv, "cm": cm, "key": key, "label": key_type}
-        else:
-            return spk, asv, cm, key_type
+        return spk, asv, cm, key_type
 
     
 class SASV_DevEvalset(Dataset):
