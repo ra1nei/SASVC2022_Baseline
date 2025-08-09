@@ -346,7 +346,6 @@ class System(pl.LightningModule):
             self.spk_model_eval,
             self.asv_embd_eval,
             self.cm_embd_eval,
-            return_pair_paths=True,   # <-- quan trọng
         )
         return DataLoader(
             self.eval_ds,
