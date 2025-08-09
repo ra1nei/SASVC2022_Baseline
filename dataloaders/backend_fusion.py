@@ -53,7 +53,7 @@ class SASV_DevEvalset(Dataset):
 
     def __getitem__(self, index):
         line = self.utt_list[index].strip()
-        spkmd, key, _, label = line.split()
+        spkmd, key, label = line.split()
 
         # Map label sang key_type
         if label == "1":
