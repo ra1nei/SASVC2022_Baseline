@@ -1,10 +1,10 @@
 import math
 import os
 import pickle as pk
+from tqdm import tqdm
 from importlib import import_module
 from typing import Any
-
-import omegaconf
+import numpy as np
 import pytorch_lightning as pl
 import schedulers as lr_schedulers
 import torch
@@ -12,25 +12,34 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from metrics import get_all_EERs
 from utils import keras_decay
+from datautils import *
+from dataloaders.backend_fusion import SASV_Trainset, SASV_DevEvalset
+
+
 
 
 class System(pl.LightningModule):
-    def __init__(
-        self, config: omegaconf.dictconfig.DictConfig, *args: Any, **kwargs: Any
-    ) -> None:
+    def __init__(self, config, *args, **kwargs):
+        """
+        config: dict hoặc omegaconf.DictConfig
+        """
         super().__init__(*args, **kwargs)
         self.config = config
-        _model = import_module("models.{}".format(config.model_arch))
-        _model = getattr(_model, "Model")
-        self.model = _model(config.model_config)
+
+        # Load model từ config
+        _model_module = import_module(f"models.{self.config['model_arch']}")
+        _model_class = getattr(_model_module, "Model")
+        self.model = _model_class(self.config["model_config"])
+
+        # Cấu hình loss
         self.configure_loss()
+
+        # Lưu hyperparams (nếu config là dict thì convert sang str)
         self.save_hyperparameters()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.model(x)
-
-        return out
-
+    def forward(self, x: torch.Tensor):
+        return self.model(x)
+    
     def training_step(self, batch, batch_idx, dataloader_idx=-1):
         embd_asv_enrol, embd_asv_test, embd_cm_test, label = batch
         pred = self.model(embd_asv_enrol, embd_asv_test, embd_cm_test)
@@ -175,50 +184,92 @@ class System(pl.LightningModule):
         else:
             raise NotImplementedError(".....")
 
-    def setup(self, stage=None):
+    def setup(self, stage: str | None = None):
         """
-        configures dataloaders.
-
-        Args:
-            stage: one among ["fit", "validate", "test", "predict"]
+        Chuẩn bị dữ liệu cho các stage: ["fit", "validate", "test"].
+        - Dùng biến trong RAM thay vì đọc file protocol.
+        - Hỗ trợ config dạng dict.
         """
-        self.load_meta_information()
-        self.load_embeddings()
 
-        if stage == "fit" or stage is None:
-            module = import_module("dataloaders." + self.config.dataloader)
-            self.ds_func_trn = getattr(module, "get_trnset")
-            self.ds_func_dev = getattr(module, "get_dev_evalset")
+        # 1) Nạp meta & embeddings (nếu bạn đã có sẵn các biến này ngoài class
+        #    thì có thể bỏ 2 dòng dưới, hoặc để các hàm này chỉ set self.asv_embd, self.cm_embd)
+        #self.load_meta_information()   # optional: có thể để trống nếu không dùng
+        self.load_embeddings()         # đảm bảo set: self.asv_embd, self.cm_embd
+
+        # 2) Nếu chưa có spk_meta_all thì build từ key của embeddings (đảm bảo đồng bộ ASV/CM)
+        if not hasattr(self, "spk_meta_all"):
+            self.spk_meta_all = build_spk_meta_from_embeds(
+                asv_embd=self.asv_embd,
+                cm_embd=self.cm_embd,
+                require_in_both=True
+            )
+
+        # 3) Stage FIT: tạo split 80/20 + chuẩn bị biến dùng cho train/val
+        if stage in ("fit", None):
+            # Nếu bạn đã có các biến split sẵn thì bỏ khúc này đi
+            if not (hasattr(self, "spk_meta_trn") and hasattr(self, "spk_meta_val")):
+                train_spk, val_spk = split_speakers(self.spk_meta_all, train_ratio=0.8, seed=42)
+                self.spk_meta_trn = filter_spk_meta(self.spk_meta_all, train_spk)
+                self.spk_meta_val = filter_spk_meta(self.spk_meta_all, val_spk)
+
+                self.asv_embd_trn = filter_emb_dict(self.asv_embd, train_spk)
+                self.cm_embd_trn  = filter_emb_dict(self.cm_embd,  train_spk)
+                self.asv_embd_val = filter_emb_dict(self.asv_embd, val_spk)
+                self.cm_embd_val  = filter_emb_dict(self.cm_embd,  val_spk)
+
+                self.spk_model_val = build_spk_model(self.spk_meta_val, self.asv_embd_val)
+                self.utt_list_val  = build_val_utt_list(self.spk_meta_val)
+
+            # Gán “hàm tạo dataset” trực tiếp bằng class đã có
+            self.ds_func_trn = SASV_Trainset
+            self.ds_func_dev = SASV_DevEvalset
+
+        # 4) Stage VALIDATE: dùng dev set từ biến RAM (không đọc file)
         elif stage == "validate":
-            module = import_module("dataloaders." + self.config.dataloader)
-            self.ds_func_dev = getattr(module, "get_dev_evalset")
+            # Yêu cầu các biến này đã có từ fit hoặc bạn tự gán trước khi gọi validate()
+            assert hasattr(self, "utt_list_val") and hasattr(self, "spk_model_val"), \
+                "utt_list_val / spk_model_val chưa có. Hãy build ở fit hoặc gán trước validate."
+            self.ds_func_dev = SASV_DevEvalset
+
+        # 5) Stage TEST: tương tự validate nhưng dùng biến eval
         elif stage == "test":
-            module = import_module("dataloaders." + self.config.dataloader)
-            self.ds_func_eval = getattr(module, "get_dev_evalset")
+            # Bạn cần tự chuẩn bị self.utt_list_eval / self.spk_model_eval / *_eval embeddings
+            # (có thể build giống phần val hoặc đọc từ nơi bạn đã chuẩn hoá)
+            assert hasattr(self, "utt_list_eval") and hasattr(self, "spk_model_eval"), \
+                "utt_list_eval / spk_model_eval chưa có. Hãy build/gán trước test."
+            self.ds_func_eval = SASV_DevEvalset
+
         else:
-            raise NotImplementedError(".....")
+            raise NotImplementedError(f"Unsupported stage: {stage}")
+
 
     def train_dataloader(self):
-        self.train_ds = self.ds_func_trn(self.cm_embd_trn, self.asv_embd_trn, self.spk_meta_trn)
+        self.train_ds = SASV_Trainset(
+            self.cm_embd_trn, 
+            self.asv_embd_trn, 
+            self.spk_meta_trn
+        )
         return DataLoader(
             self.train_ds,
-            batch_size=self.config.batch_size,
+            batch_size=self.config["batch_size"],
             shuffle=True,
             drop_last=True,
-            num_workers=self.config.loader.n_workers,
+            num_workers=self.config["loader"]["n_workers"],
         )
 
     def val_dataloader(self):
-        with open(self.config.dirs.sasv_dev_trial, "r") as f:
-            sasv_dev_trial = f.readlines()
-        self.dev_ds = self.ds_func_dev(
-            sasv_dev_trial, self.cm_embd_dev, self.asv_embd_dev, self.spk_model_dev)
+        self.dev_ds = SASV_DevEvalset(
+            self.utt_list_val,        # biến có sẵn, không đọc file
+            self.spk_model_val,
+            self.asv_embd_val,
+            self.cm_embd_val
+        )
         return DataLoader(
             self.dev_ds,
-            batch_size=self.config.batch_size,
+            batch_size=self.config["batch_size"],
             shuffle=False,
             drop_last=False,
-            num_workers=self.config.loader.n_workers,
+            num_workers=self.config["loader"]["n_workers"],
         )
 
     def test_dataloader(self):
@@ -252,25 +303,24 @@ class System(pl.LightningModule):
         with open(self.config.dirs.spk_meta + "spk_meta_eval.pk", "rb") as f:
             self.spk_meta_eval = pk.load(f)
 
+
+
+
     def load_embeddings(self):
-        # load saved countermeasures(CM) related preparations
-        with open(self.config.dirs.embedding + "cm_embd_trn.pk", "rb") as f:
-            self.cm_embd_trn = pk.load(f)
-        with open(self.config.dirs.embedding + "cm_embd_dev.pk", "rb") as f:
-            self.cm_embd_dev = pk.load(f)
-        with open(self.config.dirs.embedding + "cm_embd_eval.pk", "rb") as f:
-            self.cm_embd_eval = pk.load(f)
+        """
+        Gán embeddings vào class.
+        Nếu đã load sẵn ngoài code thì truyền vào self trước khi gọi setup().
+        """
+        if hasattr(self, "asv_embd") and hasattr(self, "cm_embd"):
+            # Đã có embeddings trong RAM → không cần load lại
+            return
 
-        # load saved automatic speaker verification(ASV) related preparations
-        with open(self.config.dirs.embedding + "asv_embd_trn.pk", "rb") as f:
-            self.asv_embd_trn = pk.load(f)
-        with open(self.config.dirs.embedding + "asv_embd_dev.pk", "rb") as f:
-            self.asv_embd_dev = pk.load(f)
-        with open(self.config.dirs.embedding + "asv_embd_eval.pk", "rb") as f:
-            self.asv_embd_eval = pk.load(f)
+        # Nếu chưa có, bạn có thể load từ đường dẫn trong config
+        from pathlib import Path
 
-        # load speaker models for development and evaluation sets
-        with open(self.config.dirs.embedding + "spk_model_dev.pk", "rb") as f:
-            self.spk_model_dev = pk.load(f)
-        with open(self.config.dirs.embedding + "spk_model_eval.pk", "rb") as f:
-            self.spk_model_eval = pk.load(f)
+        emb_dir_asv = Path(self.config["dirs"]["asv_embedding"])
+        emb_dir_cm  = Path(self.config["dirs"]["cm_embedding"])
+
+        self.asv_embd = load_embedding_dict(str(emb_dir_asv))
+        self.cm_embd  = load_embedding_dict(str(emb_dir_cm))
+
