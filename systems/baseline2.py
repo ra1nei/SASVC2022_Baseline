@@ -106,7 +106,7 @@ class System(pl.LightningModule):
                 lr=self.config.optim.lr,
                 weight_decay=self.config.optim.wd,
             )
-        elif self.config.optimizer.lowe() == "sgd":
+        elif self.config.optimizer.lower() == "sgd":
             optimizer = torch.optim.SGD(
                 params=self.parameters(),
                 lr=self.config.optim.lr,

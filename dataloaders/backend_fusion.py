@@ -52,10 +52,12 @@ class SASV_DevEvalset(Dataset):
         return len(self.utt_list)
 
     def __getitem__(self, index):
-        line = self.utt_list[index]
-        spkmd, key, _, ans = line.strip().split(" ")
+        line = self.utt_list[index].strip()
+        # ví dụ định dạng: "spkmd key _ ans"
+        spkmd, key, *_rest = line.split()
+        # Trả về key = nguyên chuỗi line, để get_all_EERs tự parse ans bên trong
+        return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], line
 
-        return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], ans
 
 
 def get_trnset(

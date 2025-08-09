@@ -8,107 +8,92 @@ from shutil import copy
 import pytorch_lightning as pl
 from omegaconf import OmegaConf
 
-from utils import *
+from utils import *  # find_gpus, keras_decay, v.v.
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def main(args):
-    # load configurations and set seed
-    config = OmegaConf.load(args.config)
+    # --- Load config (.conf) và convert sang dict để System dùng ---
+    ocfg = OmegaConf.load(args.config)
+    config = OmegaConf.to_container(ocfg, resolve=True)  # <- DICT thuần
+
     output_dir = Path(args.output_dir)
-    pl.seed_everything(config.seed, workers=True)
+    pl.seed_everything(config["seed"], workers=True)
 
-    # generate speaker-utterance meta information
-    if not (
-        os.path.exists(config.dirs.spk_meta + "spk_meta_trn.pk")
-        and os.path.exists(config.dirs.spk_meta + "spk_meta_dev.pk")
-        and os.path.exists(config.dirs.spk_meta + "spk_meta_eval.pk")
-    ):
-        generate_spk_meta(config)
+    # --- (Tuỳ chọn) Nếu còn dùng spk_meta .pk thì giữ, còn không thì bỏ ---
+    # if not (
+    #     os.path.exists(config["dirs"]["spk_meta"] + "spk_meta_trn.pk")
+    #     and os.path.exists(config["dirs"]["spk_meta"] + "spk_meta_dev.pk")
+    #     and os.path.exists(config["dirs"]["spk_meta"] + "spk_meta_eval.pk")
+    # ):
+    #     generate_spk_meta(ocfg)  # nếu hàm này yêu cầu OmegaConf, truyền ocfg
 
-    # configure paths
-    model_tag = os.path.splitext(os.path.basename(args.config))[0]
-    model_tag = output_dir / model_tag
+    # --- Chuẩn bị đường dẫn lưu ---
+    model_tag = output_dir / Path(args.config).stem
     model_save_path = model_tag / "weights"
     model_save_path.mkdir(parents=True, exist_ok=True)
     copy(args.config, model_tag / "config.conf")
 
-    _system = import_module("systems.{}".format(config.pl_system))
-    _system = getattr(_system, "System")
-    system = _system(config)
+    # --- Khởi tạo System (đã sửa để nhận dict) ---
+    _system_mod = import_module(f"systems.{config['pl_system']}")
+    System = getattr(_system_mod, "System")
+    system = System(config)
 
-    # Configure logging and callbacks
+    # --- Loggers & Callbacks ---
     logger = [
-        pl.loggers.TensorBoardLogger(save_dir=model_tag, version=1, name="tsbd_logs"),
-        pl.loggers.csv_logs.CSVLogger(
-            save_dir=model_tag,
-            version=1,
-            name="csv_logs",
-            flush_logs_every_n_steps=config.progbar_refresh * 100,
-        ),
+        pl.loggers.TensorBoardLogger(save_dir=model_tag.as_posix(), version=1, name="tsbd_logs"),
+        pl.loggers.CSVLogger(save_dir=model_tag.as_posix(), version=1, name="csv_logs"),
     ]
 
     callbacks = [
         pl.callbacks.ModelSummary(max_depth=3),
         pl.callbacks.LearningRateMonitor(logging_interval="step"),
         pl.callbacks.ModelCheckpoint(
-            dirpath=model_save_path,
+            dirpath=model_save_path.as_posix(),
             filename="{epoch}-{sasv_eer_dev:.5f}",
-            monitor="sasv_eer_dev",
+            monitor="sasv_eer_dev",     # khớp với validation_epoch_end
             mode="min",
-            every_n_epochs=config.val_interval_epoch,
-            save_top_k=config.save_top_k,
+            every_n_epochs=config["val_interval_epoch"],
+            save_top_k=config["save_top_k"],
         ),
     ]
 
-    # Train / Evaluate
-    gpus = find_gpus(config.ngpus, min_req_mem=config.min_req_mem)
+    # --- GPU chọn lọc như cũ ---
+    gpus = find_gpus(config["ngpus"], min_req_mem=config.get("min_req_mem", None))
     if gpus == -1:
         raise ValueError("Required GPUs are not available")
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+
+    # --- Trainer (cập nhật tham số theo dict) ---
     trainer = pl.Trainer(
         accelerator="gpu",
+        devices=config["ngpus"],
         callbacks=callbacks,
-        check_val_every_n_epoch=1,
-        devices=config.ngpus,
-        fast_dev_run=config.fast_dev_run,
-        gradient_clip_val=config.gradient_clip
-        if config.gradient_clip is not None
-        else 0,
-        limit_train_batches=1.0,
-        limit_val_batches=1.0,
         logger=logger,
-        max_epochs=config.epoch,
-        num_sanity_val_steps=0,
-        progress_bar_refresh_rate=config.progbar_refresh,  # 0 to disable
-        reload_dataloaders_every_n_epochs=config.loader.reload_every_n_epoch
-        if config.loader.reload_every_n_epoch is not None
-        else config.epoch,
         strategy="ddp",
         sync_batchnorm=True,
-        val_check_interval=1.0,  # 0.25 validates 4 times every epoch
+        max_epochs=config["epoch"],
+        fast_dev_run=config["fast_dev_run"],
+        limit_train_batches=1.0,
+        limit_val_batches=1.0,
+        check_val_every_n_epoch=1,
+        val_check_interval=1.0,
+        gradient_clip_val=config.get("gradient_clip", 0) or 0,
+        # progress_bar_refresh_rate đã deprecated trong PL mới → bỏ
+        reload_dataloaders_every_n_epochs=config["loader"].get("reload_every_n_epoch", 0) or 0,
+        num_sanity_val_steps=0,
+        enable_progress_bar=True,
     )
 
     trainer.fit(system)
-    trainer.test(ckpt_path="best")
+    trainer.test(system, ckpt_path="best")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="SASVC2022 Baseline framework.")
-    parser.add_argument(
-        "--config",
-        dest="config",
-        type=str,
-        help="configuration file",
-        required=True,
-        default="configs/Baseline2.conf",
-    )
-    parser.add_argument(
-        "--output_dir",
-        dest="output_dir",
-        type=str,
-        help="output directory for results",
-        default="./exp_result",
-    )
+    parser = argparse.ArgumentParser(description="SASVC Baseline (refactored).")
+    parser.add_argument("--config", type=str, required=True,
+                        help="path to .conf (OmegaConf) file")
+    parser.add_argument("--output_dir", type=str, default="./exp_result",
+                        help="output directory")
     main(parser.parse_args())

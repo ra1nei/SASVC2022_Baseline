@@ -2,11 +2,11 @@ import math
 import torch
 
 class Model(torch.nn.Module):
-    def __init__(self, model_config):
+    def __init__(self, config):
 
         super().__init__()
-        self.enh_DNN = self._make_layers(model_config['code_dim'], model_config['dnn_l_nodes'])
-        self.fc_out = torch.nn.Linear(model_config['dnn_l_nodes'][-1], 2, bias = False)
+        self.enh_DNN = self._make_layers(config["model_config"]['code_dim'], config["model_config"]['dnn_l_nodes'])
+        self.fc_out = torch.nn.Linear(config["model_config"]['dnn_l_nodes'][-1], 2, bias = False)
 
     def forward(self, embd_asv_enr, embd_asv_tst, embd_cm):    
 
