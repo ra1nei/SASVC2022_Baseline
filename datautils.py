@@ -55,22 +55,25 @@ def build_val_utt_list(spk_meta_val):
     utt_list = []
     speakers = list(spk_meta_val.keys())
     for spk, v in spk_meta_val.items():
-        # target (bona cùng speaker)
+        # target
         for k in v["bonafide"]:
-            utt_list.append(f"{spk} {k} - 1")
-        # spoof nontarget (spoof cùng speaker)
+            utt_list.append(f"{spk} {k} target")
+
+        # spoof
         for k in v["spoof"]:
-            utt_list.append(f"{spk} {k} - 0")
-        # zero-effort (bona khác speaker, chọn ngẫu nhiên 1-2 mỗi speaker)
-        import random
+            utt_list.append(f"{spk} {k} spoof")
+
+        # zero-effort nontarget
         other_spk = speakers.copy()
-        if spk in other_spk: other_spk.remove(spk)
+        if spk in other_spk:
+            other_spk.remove(spk)
         random.shuffle(other_spk)
-        for zspk in other_spk[:2]:  # mỗi spk lấy 2 mẫu zero-effort
+        for zspk in other_spk[:2]:
             if spk_meta_val[zspk]["bonafide"]:
                 k = random.choice(spk_meta_val[zspk]["bonafide"])
-                utt_list.append(f"{spk} {k} - 0")
+                utt_list.append(f"{spk} {k} nontarget")
     return utt_list
+
 
 
 def build_spk_model(spk_meta_split, asv_embd):
