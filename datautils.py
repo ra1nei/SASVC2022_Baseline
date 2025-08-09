@@ -106,7 +106,7 @@ import numpy as np
 # ví dụ: các .npy đặt tên 000000xxxx.npy
 def load_embd_npy(npy_dir):
     embd = {}
-    for name in os.listdir(npy_dir):
+    for name in tqdm(os.listdir(npy_dir), desc=f"Loading embeddings from {npy_dir}"):
         if name.endswith(".npy"):
             k = os.path.splitext(name)[0]
             embd[k] = np.load(os.path.join(npy_dir, name))
