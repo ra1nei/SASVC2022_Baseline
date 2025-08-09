@@ -126,13 +126,13 @@ class System(pl.LightningModule):
             lr_scheduler = lr_schedulers.CosineAnnealingWarmupRestarts(
                 optimizer,
                 first_cycle_steps=len(self.train_dataloader())
-                // self.config.ngpus
-                * self.config.optim.n_epoch_per_cycle,
+                // self.config["ngpus"]
+                * self.config["optim"]["n_epoch_per_cycle"],
                 cycle_mult=1.0,
-                max_lr=self.config.optim.lr,
-                min_lr=self.config.optim.min_lr,
-                warmup_steps=self.config.optim.warmup_steps,
-                gamma=self.config.optim.lr_mult_after_cycle,
+                max_lr=self.config["optim"]["lr"],
+                min_lr=self.config["optim"]["min_lr"],
+                warmup_steps=self.config["optim"]["warmup_steps"],
+                gamma=self.config["optim"]["lr_mult_after_cycle"],
             )
             return {
                 "optimizer": optimizer,
@@ -143,18 +143,18 @@ class System(pl.LightningModule):
                 },
             }
 
-        elif self.config.optim.scheduler.lower() == "reduce_on_plateau":
+        elif self.config["optim"]["scheduler"].lower() == "reduce_on_plateau":
             assert (
-                self.config.optim.lr is not None
-                and self.config.optim.min_lr is not None
-                and self.config.optim.factor is not None
-                and self.config.optim.patience is not None
+                self.config["optim"]["lr"] is not None
+                and self.config["optim"]["min_lr"] is not None
+                and self.config["optim"]["factor"] is not None
+                and self.config["optim"]["patience"] is not None
             )
             lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer,
-                factor=self.config.optim.factor,
-                patience=self.config.optim.patience,
-                min_lr=self.config.optim.min_lr,
+                factor=self.config["optim"]["factor"],
+                patience=self.config["optim"]["patience"],
+                min_lr=self.config["optim"]["min_lr"],
                 verbose=True,
             )
             return {
@@ -167,7 +167,7 @@ class System(pl.LightningModule):
                     "monitor": "dev_sasv_eer",
                 },
             }
-        elif self.config.optim.scheduler.lower() == "keras":
+        elif self.config["optim"]["scheduler"].lower() == "keras":
             lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
                 optimizer, lr_lambda=lambda step: keras_decay(step)
             )
@@ -279,10 +279,10 @@ class System(pl.LightningModule):
             sasv_eval_trial, self.cm_embd_eval, self.asv_embd_eval, self.spk_model_eval)
         return DataLoader(
             self.eval_ds,
-            batch_size=self.config.batch_size,
+            batch_size=self.config["batch_size"],
             shuffle=False,
             drop_last=False,
-            num_workers=self.config.loader.n_workers,
+            num_workers=self.config["loader"]["n_workers"],
         )
 
     def configure_loss(self):
@@ -290,18 +290,18 @@ class System(pl.LightningModule):
             self.loss = F.binary_cross_entropy_with_logits
         if self.config["loss"].lower() == "cce":
             self.loss = torch.nn.CrossEntropyLoss(
-                weight=torch.FloatTensor(self.config.loss_weight)
+                weight=torch.FloatTensor(self.config["loss_weight"])
             )
         else:
             raise NotImplementedError("!")
 
-    def load_meta_information(self):
-        with open(self.config.dirs.spk_meta + "spk_meta_trn.pk", "rb") as f:
-            self.spk_meta_trn = pk.load(f)
-        with open(self.config.dirs.spk_meta + "spk_meta_dev.pk", "rb") as f:
-            self.spk_meta_dev = pk.load(f)
-        with open(self.config.dirs.spk_meta + "spk_meta_eval.pk", "rb") as f:
-            self.spk_meta_eval = pk.load(f)
+    # def load_meta_information(self):
+    #     with open(self.config.dirs.spk_meta + "spk_meta_trn.pk", "rb") as f:
+    #         self.spk_meta_trn = pk.load(f)
+    #     with open(self.config.dirs.spk_meta + "spk_meta_dev.pk", "rb") as f:
+    #         self.spk_meta_dev = pk.load(f)
+    #     with open(self.config.dirs.spk_meta + "spk_meta_eval.pk", "rb") as f:
+    #         self.spk_meta_eval = pk.load(f)
 
 
 
