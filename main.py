@@ -54,10 +54,10 @@ def main(config, output_dir="./exp_result"):
     # --- Trainer ---
     trainer = pl.Trainer(
         accelerator="cuda" if torch.cuda.is_available() else "cpu",
-        devices=config["ngpus"],
+        devices=torch.cuda.device_count(),
         callbacks=callbacks,
         logger=logger,
-        strategy="ddp",
+        strategy="ddp_notebook", # Change to ddp if not using notebook
         sync_batchnorm=True,
         max_epochs=config["epoch"],
         fast_dev_run=config["fast_dev_run"],
