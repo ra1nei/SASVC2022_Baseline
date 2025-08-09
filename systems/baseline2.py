@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from metrics import get_all_EERs
 from utils import keras_decay
 from SASVC2022_Baseline.datautils import *
-from dataloaders.backend_fusion import SASV_Trainset, SASV_DevEvalset
+from dataloaders.backend_fusion import SASV_Trainset, SASV_DevEvalset, SASV_Evalset
 
 
 
@@ -287,7 +287,7 @@ class System(pl.LightningModule):
             # 4) Tạo utt_list_eval đúng format "spkmd key label" cho SASV_DevEvalset
             #    (spkmd = e_uid, key = t_uid, label = target/nontarget/spoof)
             self.utt_list_eval = [f"{e} {t} {lab}" for (e, t, lab) in triples]
-            self.ds_func_dev = SASV_DevEvalset
+            self.ds_func_dev = SASV_Evalset
         # 5) Stage TEST: tương tự validate nhưng dùng biến eval
         # elif stage == "test":
         #     # Bạn cần tự chuẩn bị self.utt_list_eval / self.spk_model_eval / *_eval embeddings

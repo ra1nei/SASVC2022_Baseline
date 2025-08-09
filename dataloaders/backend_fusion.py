@@ -47,7 +47,7 @@ import torch
 
 def uid(p): return os.path.splitext(os.path.basename(p))[0]
 
-class SASV_DevEvalset(Dataset):
+class SASV_Evalset(Dataset):
     def __init__(self, utt_list, spk_model, asv_embd, cm_embd):
         self.utt_list = utt_list
         self.spk_model = spk_model
@@ -97,34 +97,34 @@ class SASV_DevEvalset(Dataset):
         return spk, asv, cm, key_type
 
     
-# class SASV_DevEvalset(Dataset):
-#     def __init__(self, utt_list, spk_model, asv_embd, cm_embd):
-#         self.utt_list = utt_list
-#         self.spk_model = spk_model
-#         self.asv_embd = asv_embd
-#         self.cm_embd = cm_embd
-#     def __len__(self):
-#         return len(self.utt_list)
+class SASV_DevEvalset(Dataset):
+    def __init__(self, utt_list, spk_model, asv_embd, cm_embd):
+        self.utt_list = utt_list
+        self.spk_model = spk_model
+        self.asv_embd = asv_embd
+        self.cm_embd = cm_embd
+    def __len__(self):
+        return len(self.utt_list)
 
-#     def __getitem__(self, index):
-#         line = self.utt_list[index].strip()
-#         parts = line.split()
+    def __getitem__(self, index):
+        line = self.utt_list[index].strip()
+        parts = line.split()
 
-#         if len(parts) == 4:
-#             spkmd, key, _, label = parts
-#         elif len(parts) == 3:
-#             spkmd, key, label = parts
-#         else:
-#             raise ValueError(f"Bad line format: {line}")
+        if len(parts) == 4:
+            spkmd, key, _, label = parts
+        elif len(parts) == 3:
+            spkmd, key, label = parts
+        else:
+            raise ValueError(f"Bad line format: {line}")
 
-#         # chấp nhận cả số lẫn chữ
-#         mapping = {"1": "target", "0": "nontarget", "2": "spoof",
-#                    "target": "target", "nontarget": "nontarget", "spoof": "spoof"}
-#         if label not in mapping:
-#             raise ValueError(f"Unknown label {label}")
+        # chấp nhận cả số lẫn chữ
+        mapping = {"1": "target", "0": "nontarget", "2": "spoof",
+                   "target": "target", "nontarget": "nontarget", "spoof": "spoof"}
+        if label not in mapping:
+            raise ValueError(f"Unknown label {label}")
 
-#         key_type = mapping[label]
-#         return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], key_type
+        key_type = mapping[label]
+        return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], key_type
     
 
 
