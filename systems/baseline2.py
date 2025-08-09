@@ -315,8 +315,8 @@ class System(pl.LightningModule):
         )
 
     def val_dataloader(self):
-        self.dev_ds = SASV_Evalset(
-            self.utt_list_val,  
+        self.dev_ds = SASV_DevEvalset(
+            self.utt_list_val,        # biến có sẵn, không đọc file
             self.spk_model_val,
             self.asv_embd_val,
             self.cm_embd_val
@@ -330,7 +330,7 @@ class System(pl.LightningModule):
         )
 
     def test_dataloader(self):
-        self.eval_ds = self.ds_func_eval(
+        self.eval_ds = SASV_Evalset(
             self.utt_list_eval,       # list trial test
             self.spk_model_eval,      # speaker model cho enrolment
             self.asv_embd_eval,       # embed ASV test
