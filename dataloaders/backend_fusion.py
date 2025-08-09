@@ -71,6 +71,38 @@ class SASV_DevEvalset(Dataset):
         key_type = mapping[label]
         return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], key_type
 
+class SASV_Evalset(Dataset):
+    def __init__(self, path, spk_model, asv_embd, cm_embd):
+        with open(path,'r') as f:
+            self.utt_list = f.readlines()
+        self.spk_model = spk_model
+        self.asv_embd = asv_embd
+        self.cm_embd = cm_embd
+
+    def __len__(self):
+        return len(self.utt_list)
+
+    def __getitem__(self, index):
+        line = self.utt_list[index].strip()
+        parts = line.split()
+
+        if len(parts) == 4:
+            spkmd, key, _, label = parts
+        elif len(parts) == 3:
+            spkmd, key, label = parts
+        else:
+            raise ValueError(f"Bad line format: {line}")
+
+        # chấp nhận cả số lẫn chữ
+        mapping = {"1": "target", "0": "nontarget", "2": "spoof",
+                   "target": "target", "nontarget": "nontarget", "spoof": "spoof"}
+        if label not in mapping:
+            raise ValueError(f"Unknown label {label}")
+
+        key_type = mapping[label]
+        return self.spk_model[spkmd], self.asv_embd[key], self.cm_embd[key], key_type
+
+
 
 
 
@@ -87,4 +119,11 @@ def get_dev_evalset(
 ) -> SASV_DevEvalset:
     return SASV_DevEvalset(
         utt_list=utt_list, cm_embd=cm_embd, asv_embd=asv_embd, spk_model=spk_model
+    )
+
+def get_dev_evalset_from_path(
+    path: str, spk_model: Dict, asv_embd: Dict, cm_embd: Dict
+) -> SASV_Evalset:
+    return SASV_Evalset(
+        path=path, spk_model=spk_model, asv_embd=asv_embd, cm_embd=cm_embd
     )

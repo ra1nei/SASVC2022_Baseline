@@ -73,7 +73,7 @@ def main(config, output_dir="./exp_result"):
 
     trainer.fit(system)
 
-    #trainer.test(system, ckpt_path="best")
+    trainer.test(system, ckpt_path="best")
 
 
 if __name__ == "__main__":

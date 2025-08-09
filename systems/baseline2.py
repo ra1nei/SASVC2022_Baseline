@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from metrics import get_all_EERs
 from utils import keras_decay
 from SASVC2022_Baseline.datautils import *
-from dataloaders.backend_fusion import SASV_Trainset, SASV_DevEvalset
+from dataloaders.backend_fusion import SASV_Trainset, SASV_DevEvalset, SASV_Evalset
 
 
 
@@ -243,7 +243,21 @@ class System(pl.LightningModule):
             assert hasattr(self, "utt_list_val") and hasattr(self, "spk_model_val"), \
                 "utt_list_val / spk_model_val chưa có. Hãy build ở fit hoặc gán trước validate."
             self.ds_func_dev = SASV_DevEvalset
+        elif stage == "test":
+        # Load embeddings test nếu chưa có
+            if not (hasattr(self, "asv_embd_eval") and hasattr(self, "cm_embd_eval")):
+                self.asv_embd_eval = self.asv_embd_test  # từ load_embeddings()
+                self.cm_embd_eval  = self.cm_embd_test
 
+            # Load trial list test
+            with open(self.config["dirs"]["public_test"], "r") as f:
+                self.utt_list_eval = [ln.strip() for ln in f if ln.strip()]
+
+            # Tạo speaker model từ enrolment trong trial list test
+            self.spk_model_eval = build_spk_model_from_trials(self.utt_list_eval,
+                                                            self.asv_embd_eval)
+
+            self.ds_func_eval = SASV_DevEvalset
         # 5) Stage TEST: tương tự validate nhưng dùng biến eval
         elif stage == "test":
             # Bạn cần tự chuẩn bị self.utt_list_eval / self.spk_model_eval / *_eval embeddings
@@ -286,10 +300,12 @@ class System(pl.LightningModule):
         )
 
     def test_dataloader(self):
-        with open(self.config["dirs"]["sasv_eval_trial"], "r") as f:
-            sasv_eval_trial = f.readlines()
         self.eval_ds = self.ds_func_eval(
-            sasv_eval_trial, self.cm_embd_eval, self.asv_embd_eval, self.spk_model_eval)
+            self.utt_list_eval,       # list trial test
+            self.spk_model_eval,      # speaker model cho enrolment
+            self.asv_embd_eval,       # embed ASV test
+            self.cm_embd_eval         # embed CM test
+        )
         return DataLoader(
             self.eval_ds,
             batch_size=self.config["batch_size"],
@@ -297,6 +313,7 @@ class System(pl.LightningModule):
             drop_last=False,
             num_workers=self.config["loader"]["n_workers"],
         )
+
 
     def configure_loss(self):
         if self.config["loss"].lower() == "bce":
@@ -333,7 +350,9 @@ class System(pl.LightningModule):
 
         emb_dir_asv = Path(self.config["dirs"]["asv_embedding"])
         emb_dir_cm  = Path(self.config["dirs"]["cm_embedding"])
-
+        emb_dir_asv_test = Path(self.config["dirs"]["asv_embedding_test"])
+        emb_dir_cm_test  = Path(self.config["dirs"]["cm_embedding_test"])
         self.asv_embd = load_embedding_dict(str(emb_dir_asv))
         self.cm_embd  = load_embedding_dict(str(emb_dir_cm))
-
+        self.asv_embd_test = load_embedding_dict(str(emb_dir_asv_test))
+        self.cm_embd_test = load_embedding_dict(str(emb_dir_cm_test))
