@@ -134,3 +134,11 @@ def parse_trials_to_uids(trial_file):
             e_path, t_path, lab = ln.strip().split()
             triples.append((uid(e_path), uid(t_path), lab))  # (e_uid, t_uid, label)
     return triples
+
+def parse_trials(trial_file):
+    triples = []
+    with open(trial_file) as f:
+        for ln in f:
+            e_path, t_path = ln.strip().split()
+            triples.append((uid(e_path), uid(t_path)))  # (e_uid, t_uid)
+    return triples

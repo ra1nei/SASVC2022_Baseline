@@ -118,16 +118,16 @@ class System(pl.LightningModule):
 
     def on_test_epoch_end(self):
         # 1) Tính EER nếu có label
-        probs_list = getattr(self, "_test_probs", [])
-        keys_list  = getattr(self, "_test_keys",  [])
-        if probs_list:
-            preds = torch.cat(probs_list, dim=0).numpy()  # (N,)
-            sasv_eer, sv_eer, spf_eer = get_all_EERs(preds=preds, keys=keys_list)
-            self.log_dict({
-                "sasv_eer_eval": sasv_eer,
-                "sv_eer_eval": sv_eer,
-                "spf_eer_eval": spf_eer,
-            }, prog_bar=True)
+        # probs_list = getattr(self, "_test_probs", [])
+        # keys_list  = getattr(self, "_test_keys",  [])
+        # if probs_list:
+        #     preds = torch.cat(probs_list, dim=0).numpy()  # (N,)
+        #     sasv_eer, sv_eer, spf_eer = get_all_EERs(preds=preds, keys=keys_list)
+        #     self.log_dict({
+        #         "sasv_eer_eval": sasv_eer,
+        #         "sv_eer_eval": sv_eer,
+        #         "spf_eer_eval": spf_eer,
+        #     }, prog_bar=True)
 
         # 2) Ghi file "path1\tpath2\tscore"
         rows = getattr(self, "_test_rows", [])
@@ -140,8 +140,8 @@ class System(pl.LightningModule):
                     f.write(f"{ep}\t{tp}\t{sc:.6f}\n")
 
         # dọn buffer
-        if probs_list: self._test_probs.clear()
-        if keys_list:  self._test_keys.clear()
+        # if probs_list: self._test_probs.clear()
+        # if keys_list:  self._test_keys.clear()
         if rows:       self._test_rows.clear()
 
 
@@ -285,7 +285,7 @@ class System(pl.LightningModule):
             # 2) Đọc trials: "enroll_path test_path label" -> (e_uid, t_uid, label)
             trial_file = self.config["dirs"]["public_test"]
             triples = parse_trials_to_uids(trial_file)  # [(e_uid, t_uid, label), ...]
-
+            
             # 3) Build speaker model theo ENROLL UID (ASV only)
             from collections import defaultdict
             import numpy as np
